@@ -571,23 +571,45 @@ async function uploadSlike(input) {
   let ok = 0, fail = 0;
   for(let i=0; i<files.length; i++) {
     const file = files[i];
-    prog.textContent = '⏳ ' + (i+1) + ' / ' + files.length + ' — ' + file.name;
+    prog.textContent = '⏳ ' + (i+1) + ' / ' + files.length;
     try {
-      const base64 = await fileToBase64(file);
-      const encoded = btoa(unescape(encodeURIComponent(base64)));
-      const data = await apiGet({
-        action: 'uploadImage',
-        posaoId: viewId,
-        fileName: encodeURIComponent(file.name),
-        data: encoded
-      });
-      if(data.ok) ok++; else fail++;
-    } catch(e) { fail++; }
+      // Kompresuj sliku pre uploada
+      const blob = await kompresujSliku(file, 1200, 0.75);
+      const formData = new FormData();
+      formData.append('action', 'uploadImage');
+      formData.append('posaoId', viewId);
+      formData.append('fileName', file.name);
+      formData.append('file', blob, file.name);
+      const res = await fetch(API, { method: 'POST', body: formData });
+      const text = await res.text();
+      const data = JSON.parse(text);
+      if(data.ok) ok++; else { console.error('Upload err:', data.error); fail++; }
+    } catch(e) { console.error('Upload exception:', e); fail++; }
   }
   prog.textContent = ok + ' sačuvano' + (fail ? ', ' + fail + ' greška' : '') + ' ✅';
   input.value = '';
   ucitajSlike(viewId);
   setTimeout(()=>prog.textContent='', 4000);
+}
+
+async function kompresujSliku(file, maxDim, kvalitet) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim) {
+        if(w > h) { h = Math.round(h * maxDim/w); w = maxDim; }
+        else { w = Math.round(w * maxDim/h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(resolve, 'image/jpeg', kvalitet);
+    };
+    img.src = url;
+  });
 }
 
 function fileToBase64(file) {
