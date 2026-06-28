@@ -383,16 +383,27 @@ function showStatus(msg, color) {
 }
 
 // ===== API POZIVI =====
-async function apiGet(params) {
-  const url = API + '?' + new URLSearchParams(params);
-  const res = await fetch(url);
-  return res.json();
+function apiGet(params) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Date.now();
+    const url = API + '?' + new URLSearchParams({...params, callback: cb});
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = () => reject(new Error('Network error'));
+    window[cb] = (data) => {
+      delete window[cb];
+      document.head.removeChild(script);
+      resolve(data);
+    };
+    document.head.appendChild(script);
+    setTimeout(() => reject(new Error('Timeout')), 15000);
+  });
 }
 
 async function apiPost(params, body) {
-  const url = API + '?' + new URLSearchParams(params);
-  const res = await fetch(url, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) });
-  return res.json();
+  // POST ide kroz fetch sa no-cors, pa koristimo GET sa encoded body
+  const encoded = btoa(unescape(encodeURIComponent(typeof body === 'string' ? body : JSON.stringify(body))));
+  return apiGet({...params, data: encoded});
 }
 
 function load() { return _cache; }
